@@ -1342,6 +1342,13 @@ static inline u32_t isr_rx_scan(u8_t devmatch_ok, u8_t devmatch_id,
 
 	/* Toggle pin on isr_rx_scan interrupt */
 	debug_gpio_tgl(DBG_PIN_31);
+
+	printk("LEN: %d\n", pdu_adv_rx->len);
+	for(const uint8_t *adv_data = pdu_adv_rx->payload; adv_data != (pdu_adv_rx->payload + pdu_adv_rx->len); adv_data++)
+	{
+		printk("%x ",  *adv_data);
+	}
+	printk("#\n");
 		
 	/* Initiator */
 	if ((_radio.scanner.conn) && ((_radio.fc_ena == 0) ||
