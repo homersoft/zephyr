@@ -1,4 +1,5 @@
 /*
+/*
  * Copyright (c) 2016 Nordic Semiconductor ASA
  * Copyright (c) 2016 Vinayak Kariappa Chettimada
  *
@@ -15,6 +16,7 @@
 #include <device.h>
 #include <clock_control.h>
 #include <atomic.h>
+#include <gpio.h>
 
 #include <misc/util.h>
 #include <misc/stack.h>
@@ -330,6 +332,10 @@ static void recv_thread(void *p1, void *p2, void *p3)
 			if (buf->len) {
 				BT_DBG("Packet in: type:%u len:%u",
 					bt_buf_get_type(buf), buf->len);
+                
+				/* Toggle pin on recv_thread OK event */
+				debug_gpio_tgl(DBG_PIN_30);
+				
 				bt_recv(buf);
 			} else {
 				net_buf_unref(buf);

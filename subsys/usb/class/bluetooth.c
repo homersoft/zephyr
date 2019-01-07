@@ -155,7 +155,10 @@ static void hci_rx_thread(void)
 		}
 
 		net_buf_unref(buf);
-	}
+		
+		/* Toggle pin on hci_rx_thread event */
+		debug_gpio_tgl(DBG_PIN_04);
+    }
 }
 
 static void hci_tx_thread(void)

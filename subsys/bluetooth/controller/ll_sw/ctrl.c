@@ -15,7 +15,7 @@
 #include <clock_control.h>
 #include <bluetooth/hci.h>
 #include <misc/util.h>
-
+#include <gpio.h>
 #include "ll.h"
 
 #if defined(CONFIG_SOC_COMPATIBLE_NRF)
@@ -1340,6 +1340,9 @@ static inline u32_t isr_rx_scan(u8_t devmatch_ok, u8_t devmatch_id,
 
 	pdu_adv_rx = (void *)_radio.packet_rx[_radio.packet_rx_last]->pdu_data;
 
+	/* Toggle pin on isr_rx_scan interrupt */
+	debug_gpio_tgl(DBG_PIN_31);
+		
 	/* Initiator */
 	if ((_radio.scanner.conn) && ((_radio.fc_ena == 0) ||
 				      (_radio.fc_req == _radio.fc_ack)) &&

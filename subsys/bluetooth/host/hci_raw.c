@@ -53,6 +53,17 @@ struct net_buf *bt_buf_get_rx(enum bt_buf_type type, s32_t timeout)
 
 	buf = net_buf_alloc(&hci_rx_pool, timeout);
 
+	if(!buf)
+	{
+		/* Toggle pin on malloc failed */
+		debug_gpio_tgl(DBG_PIN_28);
+	}
+	else
+	{
+		/* Toggle pin on malloc OK */
+		debug_gpio_tgl(DBG_PIN_29);
+	}
+
 	if (buf) {
 		bt_buf_set_type(buf, type);
 	}
@@ -107,12 +118,11 @@ int bt_enable_raw(struct k_fifo *rx_queue)
 	const struct bt_hci_driver *drv = bt_dev.drv;
 	int err;
 
-	BT_DBG("");
-
+	printk("Enable raw queue\n");
 	raw_rx = rx_queue;
 
 	if (!bt_dev.drv) {
-		BT_ERR("No HCI driver registered");
+		printk("No HCI driver registered\n");
 		return -ENODEV;
 	}
 
@@ -122,11 +132,11 @@ int bt_enable_raw(struct k_fifo *rx_queue)
 
 	err = drv->open();
 	if (err) {
-		BT_ERR("HCI driver open failed (%d)", err);
+		printk("HCI driver open failed (%d)\n", err);
 		return err;
 	}
 
-	BT_INFO("Bluetooth enabled in RAW mode");
+	printk("Bluetooth enabled in RAW mode\n");
 
 	return 0;
 }
