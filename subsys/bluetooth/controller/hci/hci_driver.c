@@ -1,5 +1,5 @@
 /*
-/*
+ *
  * Copyright (c) 2016 Nordic Semiconductor ASA
  * Copyright (c) 2016 Vinayak Kariappa Chettimada
  *

@@ -8,7 +8,7 @@
 #define BDADDR_SIZE 6
 
 /* PDU Sizes */
-#define PDU_AC_PAYLOAD_SIZE_MAX 37
+#define PDU_AC_PAYLOAD_SIZE_MAX 74
 #define PDU_AC_SIZE_MAX (offsetof(struct pdu_adv, payload) + \
 			 PDU_AC_PAYLOAD_SIZE_MAX)
 #define PDU_EM_SIZE_MAX offsetof(struct pdu_data, lldata)
