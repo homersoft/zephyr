@@ -131,7 +131,13 @@ SECTION_FUNC(TEXT, k_cpu_idle)
 #endif /* CONFIG_ARMV6_M_ARMV8_M_BASELINE */
 
 	wfi
-
+    push {r0, r1}
+    ldr r0, =0x50000808
+    ldr r1, =0x00000002
+    str r1, [r0]
+    ldr r0, =0x5000080C
+    str r1, [r0]
+    pop {r0, r1}
 	bx lr
 
 /**
