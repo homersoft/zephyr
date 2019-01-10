@@ -73,6 +73,9 @@
 /* Inter Event Space */
 #define RADIO_TIES_US 625 /* Implementation defined */
 
+/* Offset for previous received PDU (for concating 2 PDUs) */
+#define PDU_RX_CONCAT_OFFSET  6
+
 /* Implementation defines */
 #define RADIO_TICKER_JITTER_US           16
 #define RADIO_TICKER_START_PART_US       300
@@ -1353,11 +1356,11 @@ static inline u32_t isr_rx_scan(u8_t devmatch_ok, u8_t devmatch_id,
       pdu_adv_rx_cnt = 0;
 
       /* Concat current and previous PDU */
-      for(uint8_t i = 0; i < pdu_adv_rx_prev.len; i++)
+      for(uint8_t i = 0; i < pdu_adv_rx_prev.len - PDU_RX_CONCAT_OFFSET; i++)
       {
-          pdu_adv_rx->payload[pdu_adv_rx->len + i] = pdu_adv_rx_prev.payload[i];
+          pdu_adv_rx->payload[pdu_adv_rx->len + i] = pdu_adv_rx_prev.payload[i + PDU_RX_CONCAT_OFFSET];
       }
-      pdu_adv_rx->len += pdu_adv_rx_prev.len;
+      pdu_adv_rx->len += pdu_adv_rx_prev.len - PDU_RX_CONCAT_OFFSET;
 
       /* Toggle pin on isr_rx_scan interrupt */
 		debug_gpio_tgl(DBG_PIN_31);
