@@ -252,6 +252,7 @@ static struct {
 static u16_t const gc_lookup_ppm[] = { 500, 250, 150, 100, 75, 50, 30, 20 };
 
 static void common_init(void);
+static inline void pdu_buf_copy(const u8_t *src, u8_t *dst, size_t len);
 static void ticker_success_assert(u32_t status, void *params);
 static void ticker_update_adv_assert(u32_t status, void *params);
 static void ticker_stop_adv_assert(u32_t status, void *params);
@@ -1333,12 +1334,13 @@ static inline bool isr_scan_init_check(struct pdu_adv *pdu, u8_t rl_idx)
 		  isr_scan_tgta_check(true, pdu, rl_idx, NULL)))));
 }
 
+
 static inline u32_t isr_rx_scan(u8_t devmatch_ok, u8_t devmatch_id,
 				u8_t irkmatch_ok, u8_t irkmatch_id, u8_t rl_idx,
 				u8_t rssi_ready)
 {
 	struct pdu_adv *pdu_adv_rx;
-	static struct pdu_adv pdu_adv_rx_prev;
+	struct pdu_adv *pdu_adv_rx_prev;
 
 	static uint8_t pdu_adv_rx_cnt = 0;
    pdu_adv_rx_cnt++;
@@ -1356,11 +1358,10 @@ static inline u32_t isr_rx_scan(u8_t devmatch_ok, u8_t devmatch_id,
       pdu_adv_rx_cnt = 0;
 
       /* Concat current and previous PDU */
-      for(uint8_t i = 0; i < pdu_adv_rx_prev.len - PDU_RX_CONCAT_OFFSET; i++)
-      {
-          pdu_adv_rx->payload[pdu_adv_rx->len + i] = pdu_adv_rx_prev.payload[i + PDU_RX_CONCAT_OFFSET];
-      }
-      pdu_adv_rx->len += pdu_adv_rx_prev.len - PDU_RX_CONCAT_OFFSET;
+      pdu_buf_copy((const uint8_t *)&pdu_adv_rx_prev->payload, (uint8_t *)&pdu_adv_rx->payload[pdu_adv_rx->len], pdu_adv_rx_prev->len);
+
+      /* Update length*/
+      pdu_adv_rx->len += pdu_adv_rx_prev->len;
 
       /* Toggle pin on isr_rx_scan interrupt */
 		debug_gpio_tgl(DBG_PIN_31);
@@ -1745,10 +1746,31 @@ static inline u32_t isr_rx_scan(u8_t devmatch_ok, u8_t devmatch_id,
 	else
    {
    	/* Update previous pdu */
-      memcpy(&pdu_adv_rx_prev, pdu_adv_rx, sizeof(struct pdu_adv));
+      pdu_buf_copy((const uint8_t*)pdu_adv_rx, (uint8_t*)&pdu_adv_rx_prev, sizeof(struct pdu_adv));
    }
    return 1;
 }
+
+
+/* Duff's device copy method - faster rhan memcpy() */
+static inline void pdu_buf_copy(const u8_t *src,  u8_t *dst, size_t len)
+{
+   size_t n = (len + 7) / 8;
+
+   switch (len % 8)
+   {
+      case 0: do { *dst++ = *src++;
+            case 7:      *dst++ = *src++;
+            case 6:      *dst++ = *src++;
+            case 5:      *dst++ = *src++;
+            case 4:      *dst++ = *src++;
+            case 3:      *dst++ = *src++;
+            case 2:      *dst++ = *src++;
+            case 1:      *dst++ = *src++;
+         } while (--n > 0);
+   }
+}
+
 
 #if defined(CONFIG_BT_CTLR_PHY)
 static inline void isr_rx_conn_phy_tx_time_set(void)
