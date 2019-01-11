@@ -1340,7 +1340,7 @@ static inline u32_t isr_rx_scan(u8_t devmatch_ok, u8_t devmatch_id,
 				u8_t rssi_ready)
 {
 	struct pdu_adv *pdu_adv_rx;
-	struct pdu_adv *pdu_adv_rx_prev;
+	static struct pdu_adv pdu_adv_rx_prev;
 
 	static uint8_t pdu_adv_rx_cnt = 0;
    pdu_adv_rx_cnt++;
@@ -1358,10 +1358,10 @@ static inline u32_t isr_rx_scan(u8_t devmatch_ok, u8_t devmatch_id,
       pdu_adv_rx_cnt = 0;
 
       /* Concat current and previous PDU */
-      pdu_buf_copy((const uint8_t *)&pdu_adv_rx_prev->payload, (uint8_t *)&pdu_adv_rx->payload[pdu_adv_rx->len], pdu_adv_rx_prev->len);
+      pdu_buf_copy((const uint8_t *)pdu_adv_rx_prev.payload, (uint8_t *)&pdu_adv_rx->payload[pdu_adv_rx->len], pdu_adv_rx_prev.len);
 
       /* Update length*/
-      pdu_adv_rx->len += pdu_adv_rx_prev->len;
+      pdu_adv_rx->len += pdu_adv_rx_prev.len;
 
       /* Toggle pin on isr_rx_scan interrupt */
 		debug_gpio_tgl(DBG_PIN_31);
