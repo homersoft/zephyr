@@ -38,7 +38,9 @@ typedef struct {
 /** Bluetooth LE Device Address */
 typedef struct {
 	u8_t      type;
+	u8_t      type_prev;
 	bt_addr_t a;
+	bt_addr_t a_prev;
 } bt_addr_le_t;
 
 #define BT_ADDR_ANY     (&(bt_addr_t) { { 0, 0, 0, 0, 0, 0 } })
@@ -1597,8 +1599,10 @@ struct bt_hci_evt_le_conn_complete {
 #define BT_HCI_EVT_LE_ADVERTISING_REPORT        0x02
 struct bt_hci_evt_le_advertising_info {
 	u8_t         evt_type;
+	u8_t 			 evt_type_prev;
 	bt_addr_le_t addr;
 	u8_t         length;
+	u8_t         length_prev;
 	u8_t         data[0];
 } __packed;
 struct bt_hci_evt_le_advertising_report {

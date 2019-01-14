@@ -1190,7 +1190,7 @@ static inline u32_t isr_rx_adv(u8_t devmatch_ok, u8_t devmatch_id,
 	return 1;
 }
 
-static u32_t isr_rx_scan_report(u8_t rssi_ready, u8_t rl_idx, bool dir_report)
+static u32_t isr_rx_scan_report(u8_t rssi_ready, u8_t rl_idx, bool dir_report, u32_t rssi_prev)
 {
 	struct radio_pdu_node_rx *node_rx;
 	struct pdu_adv *pdu_adv_rx;
@@ -1223,11 +1223,14 @@ static u32_t isr_rx_scan_report(u8_t rssi_ready, u8_t rl_idx, bool dir_report)
 		node_rx->hdr.type = NODE_RX_TYPE_REPORT;
 	}
 
-	/* save the RSSI value */
 	pdu_adv_rx = (void *)node_rx->pdu_data;
-	((u8_t *)pdu_adv_rx)[offsetof(struct pdu_adv, payload) +
-			     pdu_adv_rx->len] =
-		(rssi_ready) ? (radio_rssi_get() & 0x7f) : 0x7f;
+
+   /* save the current RSSI value */
+	((u8_t *)pdu_adv_rx)[offsetof(struct pdu_adv, payload) + pdu_adv_rx->len] = (rssi_ready) ? (radio_rssi_get() & 0x7f) : 0x7f;
+
+   /* add the prev RSSI value */
+   pdu_adv_rx->len += 1;
+	((u8_t *)pdu_adv_rx)[offsetof(struct pdu_adv, payload) + pdu_adv_rx->len] = rssi_prev;
 
 #if defined(CONFIG_BT_CTLR_PRIVACY)
 	/* save the resolving list index. */
@@ -1239,8 +1242,6 @@ static u32_t isr_rx_scan_report(u8_t rssi_ready, u8_t rl_idx, bool dir_report)
 	((u8_t *)pdu_adv_rx)[offsetof(struct pdu_adv, payload) +
 			     pdu_adv_rx->len + 2] = dir_report ? 1 : 0;
 #endif /* CONFIG_BT_CTLR_EXT_SCAN_FP */
-
-	packet_rx_enqueue();
 
 	return 0;
 }
@@ -1341,6 +1342,7 @@ static inline u32_t isr_rx_scan(u8_t devmatch_ok, u8_t devmatch_id,
 {
 	struct pdu_adv *pdu_adv_rx;
 	static struct pdu_adv pdu_adv_rx_prev;
+   static u32_t rssi_prev = 0;
 
 	static uint8_t pdu_adv_rx_cnt = 0;
    pdu_adv_rx_cnt++;
@@ -1372,7 +1374,7 @@ static inline u32_t isr_rx_scan(u8_t devmatch_ok, u8_t devmatch_id,
 //			printk("%x ",  *adv_data);
 //		}
 //		printk("#\n");
-		
+
 		/* Initiator */
 		if ((_radio.scanner.conn) && ((_radio.fc_ena == 0) ||
 			(_radio.fc_req == _radio.fc_ack)) &&
@@ -1654,7 +1656,8 @@ static inline u32_t isr_rx_scan(u8_t devmatch_ok, u8_t devmatch_id,
 			u32_t err;
 
 			/* save the adv packet */
-			err = isr_rx_scan_report(rssi_ready, irkmatch_ok ? rl_idx : FILTER_IDX_NONE, false);
+			err = isr_rx_scan_report(rssi_ready, irkmatch_ok ? rl_idx : FILTER_IDX_NONE, false, 0);
+         packet_rx_enqueue();
 
 			if(err)
 			{
@@ -1728,7 +1731,8 @@ static inline u32_t isr_rx_scan(u8_t devmatch_ok, u8_t devmatch_id,
 			u32_t err;
 
 			/* save the scan response packet */
-			err = isr_rx_scan_report(rssi_ready, irkmatch_ok ? rl_idx : FILTER_IDX_NONE, dir_report);
+			err = isr_rx_scan_report(rssi_ready, irkmatch_ok ? rl_idx : FILTER_IDX_NONE, dir_report, rssi_prev);
+         packet_rx_enqueue();
 
 			if(err)
 			{
@@ -1747,6 +1751,9 @@ static inline u32_t isr_rx_scan(u8_t devmatch_ok, u8_t devmatch_id,
    {
    	/* Update previous pdu */
       pdu_buf_copy((const uint8_t*)pdu_adv_rx, (uint8_t*)&pdu_adv_rx_prev, sizeof(struct pdu_adv));
+
+      /* Get RSSI value for pdu_adv_rx_prev */
+      rssi_prev = (rssi_ready) ? (radio_rssi_get() & 0x7f) : 0x7f;
    }
    return 1;
 }
@@ -8966,7 +8973,7 @@ static void packet_rx_enqueue(void)
 	 */
 	node_rx->hdr.onion.packet_release_last = _radio.packet_release_last;
 
-	/* dequeue from acquired rx queue */
+   /* dequeue from acquired rx queue */
 	last = _radio.packet_rx_last + 1;
 	if (last == _radio.packet_rx_count) {
 		last = 0U;

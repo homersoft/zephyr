@@ -2141,17 +2141,17 @@ static inline bool dup_found(struct pdu_adv *adv)
 }
 #endif /* CONFIG_BT_CTLR_DUP_FILTER_LEN > 0 */
 
-static void le_advertising_report(struct pdu_data *pdu_data, u8_t *b,
-				  struct net_buf *buf)
+static void le_advertising_report(struct pdu_data *pdu_data, u8_t *b, struct net_buf *buf)
 {
-	const u8_t c_adv_type[] = { 0x00, 0x01, 0x03, 0xff, 0x04,
-				    0xff, 0x02 };
+	const u8_t c_adv_type[] = { 0x00, 0x01, 0x03, 0xff, 0x04, 0xff, 0x02 };
 	struct bt_hci_evt_le_advertising_report *sep;
 	struct pdu_adv *adv = (void *)pdu_data;
 	struct bt_hci_evt_le_advertising_info *adv_info;
 	u8_t data_len;
 	u8_t info_len;
 	s8_t rssi;
+	s8_t rssi_prev;
+
 #if defined(CONFIG_BT_CTLR_PRIVACY)
 	u8_t rl_idx;
 #endif /* CONFIG_BT_CTLR_PRIVACY */
@@ -2159,6 +2159,7 @@ static void le_advertising_report(struct pdu_data *pdu_data, u8_t *b,
 	u8_t direct;
 #endif /* CONFIG_BT_CTLR_EXT_SCAN_FP */
 	s8_t *prssi;
+	s8_t *prssi_prev;
 
 #if defined(CONFIG_BT_CTLR_PRIVACY)
 	rl_idx = b[offsetof(struct radio_pdu_node_rx, pdu_data) +
@@ -2195,14 +2196,14 @@ static void le_advertising_report(struct pdu_data *pdu_data, u8_t *b,
 #endif /* CONFIG_BT_CTLR_DUP_FILTER_LEN > 0 */
 
 	if (adv->type != PDU_ADV_TYPE_DIRECT_IND) {
-		data_len = (adv->len - BDADDR_SIZE);
+		data_len = (adv->len - BDADDR_SIZE) - 1;
 	} else {
 		data_len = 0;
 	}
 
 	/* The Link Layer currently returns RSSI as an absolute value */
-	rssi = -b[offsetof(struct radio_pdu_node_rx, pdu_data) +
-		  offsetof(struct pdu_adv, payload) + adv->len];
+	rssi = 		-b[offsetof(struct radio_pdu_node_rx, pdu_data) + offsetof(struct pdu_adv, payload) + adv->len - 1];
+	rssi_prev = -b[offsetof(struct radio_pdu_node_rx, pdu_data) + offsetof(struct pdu_adv, payload) + adv->len];
 
 #if defined(CONFIG_BT_CTLR_EXT_SCAN_FP)
 	if (direct) {
@@ -2245,15 +2246,22 @@ static void le_advertising_report(struct pdu_data *pdu_data, u8_t *b,
 	}
 #endif /* CONFIG_BT_CTLR_EXT_SCAN_FP */
 
-	info_len = sizeof(struct bt_hci_evt_le_advertising_info) + data_len +
-		   sizeof(*prssi);
-	sep = meta_evt(buf, BT_HCI_EVT_LE_ADVERTISING_REPORT,
-		       sizeof(*sep) + info_len);
+	/* SUBEVENT CODE */
+	info_len = sizeof(struct bt_hci_evt_le_advertising_info) + data_len + sizeof(*prssi) + sizeof(*prssi_prev);
+	sep = meta_evt(buf, BT_HCI_EVT_LE_ADVERTISING_REPORT, sizeof(*sep) + info_len);
 
-	sep->num_reports = 1;
+	/* NUM OF REPORTS */
+	sep->num_reports = 2;
+
+	/* EVENT TYPE */
+	/* Get the address */
 	adv_info = (void *)(((u8_t *)sep) + sizeof(*sep));
 
+	/* Add event type for the current PDU */
 	adv_info->evt_type = c_adv_type[adv->type];
+
+	/* Add event type for the previous PDU */
+	adv_info->evt_type_prev = c_adv_type[adv->type]; //todo
 
 #if defined(CONFIG_BT_CTLR_PRIVACY)
 	rl_idx = b[offsetof(struct radio_pdu_node_rx, pdu_data) +
@@ -2269,16 +2277,28 @@ static void le_advertising_report(struct pdu_data *pdu_data, u8_t *b,
 	if (1) {
 #endif /* CONFIG_BT_CTLR_PRIVACY */
 
+		/* ADDRESS TYPE */
 		adv_info->addr.type = adv->tx_addr;
-		memcpy(&adv_info->addr.a.val[0], &adv->adv_ind.addr[0],
-		       sizeof(bt_addr_t));
+		adv_info->addr.type_prev = adv->tx_addr; //todo
+
+		/* ADDRESS VALUE (6 bytes) per 1 NUM_OF_REPORTS */
+		memcpy(&adv_info->addr.a.val[0], &adv->adv_ind.addr[0], sizeof(bt_addr_t));
+		memcpy(&adv_info->addr.a_prev.val[0], &adv->adv_ind.addr[0], sizeof(bt_addr_t)); //todo
 	}
 
+	/* LENGTH_DATA */
 	adv_info->length = data_len;
+	adv_info->length_prev = data_len;
+
+	/* DATA */
 	memcpy(&adv_info->data[0], &adv->adv_ind.data[0], data_len);
+
 	/* RSSI */
-	prssi = &adv_info->data[0] + data_len;
-	*prssi = rssi;
+	prssi 		= &adv_info->data[0] + data_len;
+	prssi_prev 	= &adv_info->data[0] + data_len + 1;
+
+	*prssi 		= rssi;
+	*prssi_prev = rssi_prev;
 }
 
 #if defined(CONFIG_BT_CTLR_ADV_EXT)
