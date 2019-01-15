@@ -2141,17 +2141,26 @@ static inline bool dup_found(struct pdu_adv *adv)
 }
 #endif /* CONFIG_BT_CTLR_DUP_FILTER_LEN > 0 */
 
-static void le_advertising_report(struct pdu_data *pdu_data, u8_t *b,
-				  struct net_buf *buf)
+//todo:JWI investigate
+static void le_advertising_report(struct pdu_data *pdu_data_prev,
+	                               struct pdu_data *pdu_data,
+	                               u8_t *b_prev,
+	                               u8_t *b,
+				                      struct net_buf *buf)
 {
-	const u8_t c_adv_type[] = { 0x00, 0x01, 0x03, 0xff, 0x04,
-				    0xff, 0x02 };
+	const u8_t c_adv_type[] = { 0x00, 0x01, 0x03, 0xff, 0x04, 0xff, 0x02 };
+
 	struct bt_hci_evt_le_advertising_report *sep;
-	struct pdu_adv *adv = (void *)pdu_data;
+
+	struct pdu_adv *adv_prev 	= (void *)pdu_data_prev;
+	struct pdu_adv *adv 			= (void *)pdu_data;
+
 	struct bt_hci_evt_le_advertising_info *adv_info;
+
 	u8_t data_len;
 	u8_t info_len;
 	s8_t rssi;
+
 #if defined(CONFIG_BT_CTLR_PRIVACY)
 	u8_t rl_idx;
 #endif /* CONFIG_BT_CTLR_PRIVACY */
@@ -2201,8 +2210,8 @@ static void le_advertising_report(struct pdu_data *pdu_data, u8_t *b,
 	}
 
 	/* The Link Layer currently returns RSSI as an absolute value */
-	rssi = -b[offsetof(struct radio_pdu_node_rx, pdu_data) +
-		  offsetof(struct pdu_adv, payload) + adv->len];
+	rssi 			= -b[offsetof(struct radio_pdu_node_rx, pdu_data) +
+		              offsetof(struct pdu_adv, payload) + adv->len];
 
 #if defined(CONFIG_BT_CTLR_EXT_SCAN_FP)
 	if (direct) {
@@ -2245,14 +2254,19 @@ static void le_advertising_report(struct pdu_data *pdu_data, u8_t *b,
 	}
 #endif /* CONFIG_BT_CTLR_EXT_SCAN_FP */
 
-	info_len = sizeof(struct bt_hci_evt_le_advertising_info) + data_len +
-		   sizeof(*prssi);
-	sep = meta_evt(buf, BT_HCI_EVT_LE_ADVERTISING_REPORT,
-		       sizeof(*sep) + info_len);
+	info_len = (sizeof(struct bt_hci_evt_le_advertising_info)) +
+		         data_len +
+		         sizeof(*prssi);
 
-	sep->num_reports = 1;
+	/* LE_META_EVENT 0x3E & SUBEVENT_CODE 0x02 */
+	sep = meta_evt(buf, BT_HCI_EVT_LE_ADVERTISING_REPORT, sizeof(*sep) + info_len);
+
+	/* NUM_OF_REPORTS */
+	sep->num_reports = 2;
+
 	adv_info = (void *)(((u8_t *)sep) + sizeof(*sep));
 
+	/* EVENT_TYPE */
 	adv_info->evt_type = c_adv_type[adv->type];
 
 #if defined(CONFIG_BT_CTLR_PRIVACY)
@@ -2620,17 +2634,21 @@ static void le_phy_upd_complete(struct pdu_data *pdu_data, u16_t handle,
 #endif /* CONFIG_BT_CTLR_PHY */
 #endif /* CONFIG_BT_CONN */
 
-static void encode_control(struct radio_pdu_node_rx *node_rx,
-			   struct pdu_data *pdu_data, struct net_buf *buf)
+static void encode_control(struct radio_pdu_node_rx *node_rx_prev,
+									struct radio_pdu_node_rx *node_rx,
+			                  struct pdu_data *pdu_data_prev,
+			                  struct pdu_data *pdu_data,
+			                  struct net_buf *buf)
 {
-	u8_t *b = (u8_t *)node_rx;
-	u16_t handle;
+	u8_t *b_prev 	= (u8_t *)node_rx_prev;
+	u8_t *b 			= (u8_t *)node_rx;
 
+	u16_t handle;
 	handle = node_rx->hdr.handle;
 
 	switch (node_rx->hdr.type) {
 	case NODE_RX_TYPE_REPORT:
-		le_advertising_report(pdu_data, b, buf);
+		le_advertising_report(pdu_data_prev, pdu_data, b_prev, b, buf);
 		break;
 
 #if defined(CONFIG_BT_CTLR_ADV_EXT)
@@ -2962,15 +2980,22 @@ void hci_acl_encode(struct radio_pdu_node_rx *node_rx, struct net_buf *buf)
 }
 #endif
 
-void hci_evt_encode(struct radio_pdu_node_rx *node_rx, struct net_buf *buf)
+void hci_evt_encode(struct radio_pdu_node_rx *node_rx_prev,
+	                 struct radio_pdu_node_rx *node_rx,
+	                 struct net_buf *buf)
 {
+	struct pdu_data *pdu_data_prev;
 	struct pdu_data *pdu_data;
 
-	pdu_data = (void *)node_rx->pdu_data;
+	pdu_data_prev 	= (void *)node_rx_prev->pdu_data;
+	pdu_data 		= (void *)node_rx->pdu_data;
 
-	if (node_rx->hdr.type != NODE_RX_TYPE_DC_PDU) {
-		encode_control(node_rx, pdu_data, buf);
-	} else {
+	if ( (node_rx->hdr.type != NODE_RX_TYPE_DC_PDU) && (node_rx_prev->hdr.type != NODE_RX_TYPE_DC_PDU) )
+	{
+		encode_control(node_rx_prev, node_rx, pdu_data_prev, pdu_data, buf);
+	}
+	else
+   {
 		encode_data_ctrl(node_rx, pdu_data, buf);
 	}
 }

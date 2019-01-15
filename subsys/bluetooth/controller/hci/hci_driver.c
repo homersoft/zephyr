@@ -1,5 +1,5 @@
 /*
-/*
+ *
  * Copyright (c) 2016 Nordic Semiconductor ASA
  * Copyright (c) 2016 Vinayak Kariappa Chettimada
  *
@@ -111,23 +111,28 @@ static void prio_recv_thread(void *p1, void *p2, void *p3)
 	}
 }
 
-static inline struct net_buf *encode_node(struct radio_pdu_node_rx *node_rx,
-					  s8_t class)
+static inline struct net_buf *encode_node(struct radio_pdu_node_rx *node_rx_prev,
+														struct radio_pdu_node_rx *node_rx,
+					  									s8_t class_prev,
+					  									s8_t class)
 {
-	struct net_buf *buf = NULL;
+	struct net_buf *buf  = NULL;
 
 	/* Check if we need to generate an HCI event or ACL data */
-	switch (class) {
+	switch (class) { //todo:JWI class_prev ??
 	case HCI_CLASS_EVT_DISCARDABLE:
 	case HCI_CLASS_EVT_REQUIRED:
 	case HCI_CLASS_EVT_CONNECTION:
-		if (class == HCI_CLASS_EVT_DISCARDABLE) {
-			buf = bt_buf_get_rx(BT_BUF_EVT, K_NO_WAIT);
-		} else {
+		if (class == HCI_CLASS_EVT_DISCARDABLE)
+		{
+			buf  = bt_buf_get_rx(BT_BUF_EVT, K_NO_WAIT);
+		}
+		else
+	   {
 			buf = bt_buf_get_rx(BT_BUF_EVT, K_FOREVER);
 		}
 		if (buf) {
-			hci_evt_encode(node_rx, buf);
+			hci_evt_encode(node_rx_prev, node_rx, buf);
 		}
 		break;
 #if defined(CONFIG_BT_CONN)
@@ -152,9 +157,12 @@ static inline struct net_buf *encode_node(struct radio_pdu_node_rx *node_rx,
 	return buf;
 }
 
-static inline struct net_buf *process_node(struct radio_pdu_node_rx *node_rx)
+static inline struct net_buf *process_node(struct radio_pdu_node_rx *node_rx_prev,
+	                                        struct radio_pdu_node_rx *node_rx)
 {
-	s8_t class = hci_get_class(node_rx);
+	s8_t class_prev = hci_get_class(node_rx_prev);
+	s8_t class 		 = hci_get_class(node_rx);
+
 	struct net_buf *buf = NULL;
 
 #if defined(CONFIG_BT_HCI_ACL_FLOW_CONTROL)
@@ -186,7 +194,7 @@ static inline struct net_buf *process_node(struct radio_pdu_node_rx *node_rx)
 #endif
 
 	/* process regular node from radio */
-	buf = encode_node(node_rx, class);
+	buf = encode_node(node_rx_prev, node_rx, class_prev, class);
 
 	return buf;
 }
@@ -257,7 +265,7 @@ static inline struct net_buf *process_hbuf(struct radio_pdu_node_rx *n)
 	}
 
 	if (node) {
-		buf = encode_node(node_rx, class);
+		buf = encode_node(0, node_rx, 0, class);
 		/* Update host buffers after encoding */
 		hbuf_count = hbuf_total - (hci_hbuf_sent - hci_hbuf_acked);
 		/* next node */
@@ -297,6 +305,8 @@ static void recv_thread(void *p1, void *p2, void *p3)
 
 	while (1) {
 		struct radio_pdu_node_rx *node_rx = NULL;
+		struct radio_pdu_node_rx *node_rx_prev = NULL;
+
 		struct net_buf *buf = NULL;
 
 		BT_DBG("blocking");
@@ -319,17 +329,24 @@ static void recv_thread(void *p1, void *p2, void *p3)
 		buf = process_hbuf(node_rx);
 
 #else
+		/* Get last 2 rx pdu's */
+		node_rx_prev = k_fifo_get(&recv_fifo, K_FOREVER);
 		node_rx = k_fifo_get(&recv_fifo, K_FOREVER);
+
 #endif
 		BT_DBG("unblocked");
 
-		if (node_rx && !buf) {
+		//if (node_rx_prev && node_rx && !buf) todo:JWI ??
+		if (node_rx && !buf)
+		{
 			/* process regular node from radio */
-			buf = process_node(node_rx);
+			buf = process_node(node_rx_prev, node_rx);
 		}
 
-		if (buf) {
-			if (buf->len) {
+		if (buf)
+		{
+			if (buf->len)
+			{
 				BT_DBG("Packet in: type:%u len:%u",
 					bt_buf_get_type(buf), buf->len);
                 
@@ -337,7 +354,9 @@ static void recv_thread(void *p1, void *p2, void *p3)
 				debug_gpio_tgl(DBG_PIN_30);
 				
 				bt_recv(buf);
-			} else {
+			}
+			else
+		   {
 				net_buf_unref(buf);
 			}
 		}
