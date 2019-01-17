@@ -109,95 +109,131 @@ static void prio_recv_thread(void *p1, void *p2, void *p3)
 	}
 }
 
-static inline struct net_buf *encode_node(struct radio_pdu_node_rx *node_rx,
-					  s8_t class)
+static inline u8_t encode_node(struct radio_pdu_node_rx **node_rx, struct net_buf **buf)
 {
-	struct net_buf *buf = NULL;
+    u8_t node_cnt = 0;
 
-	/* Check if we need to generate an HCI event or ACL data */
-	switch (class) {
-	case HCI_CLASS_EVT_DISCARDABLE:
-	case HCI_CLASS_EVT_REQUIRED:
-	case HCI_CLASS_EVT_CONNECTION:
-		if (class == HCI_CLASS_EVT_DISCARDABLE) {
-			buf = bt_buf_get_rx(BT_BUF_EVT, K_NO_WAIT);
-		} else {
-			buf = bt_buf_get_rx(BT_BUF_EVT, K_FOREVER);
-		}
-		if (buf) {
-			hci_evt_encode(node_rx, buf);
-		}
-		break;
+    LL_ASSERT(node_rx[0]);
+
+    while(node_rx[node_cnt] && (node_cnt < HCI_MAX_NR_OF_CONCAT_MSG))
+    {
+        if (*buf)
+            goto done;
+
+        /* Check if we need to generate an HCI event or ACL data */
+        switch (hci_get_class(node_rx[node_cnt]))
+        {
+            case HCI_CLASS_EVT_REQUIRED:
+            case HCI_CLASS_EVT_CONNECTION:
+                *buf = bt_buf_get_rx(BT_BUF_EVT, K_FOREVER);
+                hci_evt_encode(node_rx[node_cnt], *buf);
+                break;
+
+            case HCI_CLASS_EVT_DISCARDABLE:
+                break;
+
 #if defined(CONFIG_BT_CONN)
-	case HCI_CLASS_ACL_DATA:
-		/* generate ACL data */
-		buf = bt_buf_get_rx(BT_BUF_ACL_IN, K_FOREVER);
-		hci_acl_encode(node_rx, buf);
-		break;
+            case HCI_CLASS_ACL_DATA:
+                printk("hci_acl_encode: %p\r\n", node_rx[node_cnt]);
+                *buf = bt_buf_get_rx(BT_BUF_ACL_IN, K_FOREVER);
+                hci_acl_encode(node_rx[node_cnt], *buf);
+                break;
 #endif
-	default:
-		LL_ASSERT(0);
-		break;
-	}
 
+            default:
+                LL_ASSERT(0);
+                break;
+        }
+
+        node_cnt++;
+    }
+
+    LL_ASSERT(!*buf);
+
+    /* Only if all nodes are discardable */
+    if((*buf = bt_buf_get_rx(BT_BUF_EVT, K_MSEC(5))))
+    {
+        if (node_cnt == 1)
+        {
+            hci_evt_encode(node_rx[0], *buf);
+        }
+        else
+        {
+            node_cnt = hci_evt_concat(node_rx, *buf);
+        }
+    }
+
+done:
+    LL_ASSERT(node_cnt > 0);
+
+    for (u8_t i = 0; i != node_cnt; ++i)
+    {
 #if defined(CONFIG_BT_LL_SW)
-	radio_rx_fc_set(node_rx->hdr.handle, 0);
+        radio_rx_fc_set(node_rx[i]->hdr.handle, 0);
 #endif /* CONFIG_BT_LL_SW */
 
-	node_rx->hdr.onion.next = 0;
-	ll_rx_mem_release((void **)&node_rx);
+        node_rx[i]->hdr.onion.next = 0;
+        ll_rx_mem_release((void **)&node_rx[i]);
+    }
 
-	return buf;
+	return node_cnt;
 }
 
-static inline struct net_buf *process_node(struct radio_pdu_node_rx *node_rx)
+static inline u8_t process_node(struct radio_pdu_node_rx **node_rx, struct net_buf **buf)
 {
-	s8_t class = hci_get_class(node_rx);
-	struct net_buf *buf = NULL;
-
 #if defined(CONFIG_BT_HCI_ACL_FLOW_CONTROL)
+   u8_t node_cnt = 0;
+   s8_t class;
+
 	if (hbuf_count != -1) {
 		bool pend = !sys_slist_is_empty(&hbuf_pend);
 
-		/* controller to host flow control enabled */
-		switch (class) {
-		case HCI_CLASS_EVT_DISCARDABLE:
-		case HCI_CLASS_EVT_REQUIRED:
-			break;
-		case HCI_CLASS_EVT_CONNECTION:
-			/* for conn-related events, only pend is relevant */
-			hbuf_count = 1;
-			/* fallthrough */
-		case HCI_CLASS_ACL_DATA:
-			if (pend || !hbuf_count) {
-				sys_slist_append(&hbuf_pend,
-						 &node_rx->hdr.onion.node);
-				BT_DBG("FC: Queuing item: %d", class);
-				return NULL;
-			}
-			break;
-		default:
-			LL_ASSERT(0);
-			break;
+        while(node_rx[node_cnt] && (node_cnt < HCI_MAX_NR_OF_CONCAT_MSG))
+        {
+            class = hci_get_class(node_rx[node_cnt]);
+
+            /* controller to host flow control enabled */
+            switch (class)
+            {
+                case HCI_CLASS_EVT_DISCARDABLE:
+                case HCI_CLASS_EVT_REQUIRED:
+                    break;
+                case HCI_CLASS_EVT_CONNECTION:
+                    /* for conn-related events, only pend is relevant */
+                    hbuf_count = 1;
+                    /* fallthrough */
+                case HCI_CLASS_ACL_DATA:
+                    if (pend || !hbuf_count) {
+                        sys_slist_append(&hbuf_pend,
+                                &node_rx[node_cnt]->hdr.onion.node);
+                        BT_DBG("FC: Queuing item: %d", class);
+                        return 1;
+                    }
+                    break;
+
+                default:
+                    LL_ASSERT(0);
+                    break;
+            }
+
+            node_cnt++;
 		}
 	}
 #endif
 
 	/* process regular node from radio */
-	buf = encode_node(node_rx, class);
-
-	return buf;
+	return encode_node(node_rx, buf);
 }
 
 #if defined(CONFIG_BT_HCI_ACL_FLOW_CONTROL)
 static inline struct net_buf *process_hbuf(struct radio_pdu_node_rx *n)
 {
 	/* shadow total count in case of preemption */
-	struct radio_pdu_node_rx *node_rx = NULL;
+	struct radio_pdu_node_rx *node_rx = n;
 	s32_t hbuf_total = hci_hbuf_total;
 	struct net_buf *buf = NULL;
 	sys_snode_t *node = NULL;
-	s8_t class;
+	s8_t class = 0;
 	int reset;
 
 	reset = atomic_test_and_clear_bit(&hci_state_mask, HCI_STATE_BIT_RESET);
@@ -255,7 +291,8 @@ static inline struct net_buf *process_hbuf(struct radio_pdu_node_rx *n)
 	}
 
 	if (node) {
-		buf = encode_node(node_rx, class);
+	   struct radio_pdu_node_rx *_node_rx[2] = {node_rx, NULL};
+		encode_node(_node_rx, &buf);
 		/* Update host buffers after encoding */
 		hbuf_count = hbuf_total - (hci_hbuf_sent - hci_hbuf_acked);
 		/* next node */
@@ -279,6 +316,15 @@ static inline struct net_buf *process_hbuf(struct radio_pdu_node_rx *n)
 }
 #endif
 
+static inline void process_buf(struct net_buf *b) {
+   if (b->len) {
+      BT_DBG("Packet in: type:%u len:%u",  bt_buf_get_type(b), b->len);
+      bt_recv(b);
+   } else {
+      net_buf_unref(b);
+   }
+}
+
 static void recv_thread(void *p1, void *p2, void *p3)
 {
 #if defined(CONFIG_BT_HCI_ACL_FLOW_CONTROL)
@@ -294,7 +340,8 @@ static void recv_thread(void *p1, void *p2, void *p3)
 #endif
 
 	while (1) {
-		struct radio_pdu_node_rx *node_rx = NULL;
+		struct radio_pdu_node_rx *node_rx[HCI_MAX_NR_OF_CONCAT_MSG + 1] = {NULL};
+		u8_t node_cnt = 0;
 		struct net_buf *buf = NULL;
 
 		BT_DBG("blocking");
@@ -307,33 +354,40 @@ static void recv_thread(void *p1, void *p2, void *p3)
 			events[0].signal->signaled = 0;
 		} else if (events[1].state ==
 			   K_POLL_STATE_FIFO_DATA_AVAILABLE) {
-			node_rx = k_fifo_get(events[1].fifo, 0);
+            node_rx[0] = k_fifo_get(events[1].fifo, K_NO_WAIT);
 		}
 
 		events[0].state = K_POLL_STATE_NOT_READY;
 		events[1].state = K_POLL_STATE_NOT_READY;
 
 		/* process host buffers first if any */
-		buf = process_hbuf(node_rx);
-
+		buf = process_hbuf(node_rx[0]);
 #else
-		node_rx = k_fifo_get(&recv_fifo, K_FOREVER);
+		node_rx[0] = k_fifo_get(&recv_fifo, K_FOREVER);
 #endif
+
+      for (node_cnt = 1; node_cnt < HCI_MAX_NR_OF_CONCAT_MSG; node_cnt++)
+      {
+         node_rx[node_cnt] = k_fifo_get(&recv_fifo, K_NO_WAIT);
+         if (!node_rx[node_cnt])
+            break;
+      }
+
 		BT_DBG("unblocked");
 
-		if (node_rx && !buf) {
-			/* process regular node from radio */
-			buf = process_node(node_rx);
-		}
+      if (node_rx[0] && !buf) {
+         /* process regular nodes from radio */
+         for (u8_t i = 0; (i < node_cnt) && node_rx[i]; i += process_node(&node_rx[i], &buf))
+         {
+            if (buf) {
+               process_buf(buf);
+               buf = NULL;
+            }
+         }
+      }
 
-		if (buf) {
-			if (buf->len) {
-				BT_DBG("Packet in: type:%u len:%u",
-					bt_buf_get_type(buf), buf->len);
-				bt_recv(buf);
-			} else {
-				net_buf_unref(buf);
-			}
+      if (buf) {
+         process_buf(buf);
 		}
 
 		k_yield();

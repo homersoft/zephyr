@@ -30,6 +30,16 @@ extern "C" {
 #define BT_HCI_OWN_ADDR_RPA_OR_PUBLIC  0x02
 #define BT_HCI_OWN_ADDR_RPA_OR_RANDOM  0x03
 
+/* HCI LE Advertising event types */
+enum hci_le_adv_rep_evt_type {
+   HCI_LE_ADV_REP_EVT_TYPE_ADV_IND = 0x00,
+   HCI_LE_ADV_REP_EVT_TYPE_ADV_DIRECT_IND = 0x01,
+   HCI_LE_ADV_REP_EVT_TYPE_ADV_SCAN_IND = 0x02,
+   HCI_LE_ADV_REP_EVT_TYPE_ADV_NOCONN_IND = 0x03,
+   HCI_LE_ADV_REP_EVT_TYPE_ADV_SCAN_RSP = 0x04,
+   HCI_LE_ADV_REP_EVT_TYPE_INVALID = 0xFF
+}__packed;
+
 /** Bluetooth Device Address */
 typedef struct {
 	u8_t  val[6];

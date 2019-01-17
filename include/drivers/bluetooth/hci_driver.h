@@ -25,6 +25,8 @@
 extern "C" {
 #endif
 
+#define HCI_MAX_NR_OF_CONCAT_MSG    ((u8_t)3)
+
 enum {
 	/* The host should never send HCI_Reset */
 	BT_QUIRK_NO_RESET = BIT(0),
