@@ -2157,14 +2157,13 @@ static void le_advertising_report(struct pdu_data *pdu_data,
 
 	s8_t rssi;
 	s8_t rssi_next;
+	
 #if defined(CONFIG_BT_CTLR_PRIVACY)
 	u8_t rl_idx;
 #endif /* CONFIG_BT_CTLR_PRIVACY */
 #if defined(CONFIG_BT_CTLR_EXT_SCAN_FP)
 	u8_t direct;
 #endif /* CONFIG_BT_CTLR_EXT_SCAN_FP */
-	s8_t *prssi;
-	s8_t *prssi_next;
 
 #if defined(CONFIG_BT_CTLR_PRIVACY)
 	rl_idx = b[offsetof(struct radio_pdu_node_rx, pdu_data) +
@@ -2305,9 +2304,8 @@ static void le_advertising_report(struct pdu_data *pdu_data,
 	memcpy(&hci_buf[19 + data_len], &adv_next->adv_ind.data[0], data_len_next);
 
 	/* RSSI */
-	hci_buf[19 + data_len + data_len_next] = 0x22; //prssi = &adv_info->data[0] + data_len;
-	hci_buf[19 + data_len + data_len_next + 1] = 0x33;
-	//*prssi = rssi;
+	hci_buf[19 + data_len + data_len_next] = rssi;
+	hci_buf[19 + data_len + data_len_next + 1] = rssi_next;
 }
 
 #if defined(CONFIG_BT_CTLR_ADV_EXT)
