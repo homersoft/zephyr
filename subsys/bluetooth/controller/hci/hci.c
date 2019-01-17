@@ -2259,8 +2259,8 @@ static void le_advertising_report(struct pdu_data *pdu_data,
 	}
 #endif /* CONFIG_BT_CTLR_EXT_SCAN_FP */
 
-	u8_t info_len = data_len + sizeof(*prssi)	+ 1 + 1 + 6 + 1 +
-					 	 data_len_next + sizeof(*prssi_next) + 1 + 1 + 6 + 1;
+	u8_t info_len = 1 + 1 + 6 + 1 + data_len + 1 + 		//len: evt_type + addr_type + addr + length + data + rssi
+					 	 1 + 1 + 6 + 1 + data_len_next + 1; //len: evt_type + addr_type + addr + length + data + rssi
 
 	u8_t *hci_buf = meta_evt(buf, BT_HCI_EVT_LE_ADVERTISING_REPORT, 1 + info_len); // 1 - num_of_reports size
 
