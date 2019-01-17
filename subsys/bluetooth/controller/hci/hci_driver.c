@@ -110,12 +110,14 @@ static void prio_recv_thread(void *p1, void *p2, void *p3)
 }
 
 static inline struct net_buf *encode_node(struct radio_pdu_node_rx *node_rx,
-					  s8_t class)
+                                          struct radio_pdu_node_rx *node_rx_next,
+                                          s8_t class,
+                                          s8_t class_next)
 {
 	struct net_buf *buf = NULL;
 
 	/* Check if we need to generate an HCI event or ACL data */
-	switch (class) {
+	switch (class) {  //todo:JWI
 	case HCI_CLASS_EVT_DISCARDABLE:
 	case HCI_CLASS_EVT_REQUIRED:
 	case HCI_CLASS_EVT_CONNECTION:
@@ -125,7 +127,7 @@ static inline struct net_buf *encode_node(struct radio_pdu_node_rx *node_rx,
 			buf = bt_buf_get_rx(BT_BUF_EVT, K_FOREVER);
 		}
 		if (buf) {
-			hci_evt_encode(node_rx, buf);
+			hci_evt_encode(node_rx, node_rx_next, buf);
 		}
 		break;
 #if defined(CONFIG_BT_CONN)
@@ -150,9 +152,11 @@ static inline struct net_buf *encode_node(struct radio_pdu_node_rx *node_rx,
 	return buf;
 }
 
-static inline struct net_buf *process_node(struct radio_pdu_node_rx *node_rx)
+static inline struct net_buf *process_node(struct radio_pdu_node_rx *node_rx, struct radio_pdu_node_rx *node_rx_next)
 {
 	s8_t class = hci_get_class(node_rx);
+	s8_t class_next = hci_get_class(node_rx_next);
+
 	struct net_buf *buf = NULL;
 
 #if defined(CONFIG_BT_HCI_ACL_FLOW_CONTROL)
@@ -184,7 +188,7 @@ static inline struct net_buf *process_node(struct radio_pdu_node_rx *node_rx)
 #endif
 
 	/* process regular node from radio */
-	buf = encode_node(node_rx, class);
+	buf = encode_node(node_rx, node_rx_next, class, class_next);
 
 	return buf;
 }
@@ -255,7 +259,7 @@ static inline struct net_buf *process_hbuf(struct radio_pdu_node_rx *n)
 	}
 
 	if (node) {
-		buf = encode_node(node_rx, class);
+		buf = encode_node(node_rx, 0, class, 0); //todo:JWI
 		/* Update host buffers after encoding */
 		hbuf_count = hbuf_total - (hci_hbuf_sent - hci_hbuf_acked);
 		/* next node */
@@ -295,6 +299,7 @@ static void recv_thread(void *p1, void *p2, void *p3)
 
 	while (1) {
 		struct radio_pdu_node_rx *node_rx = NULL;
+		struct radio_pdu_node_rx *node_rx_next = NULL;
 		struct net_buf *buf = NULL;
 
 		BT_DBG("blocking");
@@ -308,13 +313,14 @@ static void recv_thread(void *p1, void *p2, void *p3)
 		} else if (events[1].state ==
 			   K_POLL_STATE_FIFO_DATA_AVAILABLE) {
 			node_rx = k_fifo_get(events[1].fifo, 0);
+			node_rx_next = k_fifo_peek_head(events[1].fifo);
 		}
 
 		events[0].state = K_POLL_STATE_NOT_READY;
 		events[1].state = K_POLL_STATE_NOT_READY;
 
 		/* process host buffers first if any */
-		buf = process_hbuf(node_rx);
+		buf = process_hbuf(node_rx); //todo:JWI
 
 #else
 		node_rx = k_fifo_get(&recv_fifo, K_FOREVER);
@@ -323,7 +329,7 @@ static void recv_thread(void *p1, void *p2, void *p3)
 
 		if (node_rx && !buf) {
 			/* process regular node from radio */
-			buf = process_node(node_rx);
+			buf = process_node(node_rx, node_rx_next);
 		}
 
 		if (buf) {
