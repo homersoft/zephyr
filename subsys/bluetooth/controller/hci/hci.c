@@ -2141,23 +2141,19 @@ static inline bool dup_found(struct pdu_adv *adv)
 }
 #endif /* CONFIG_BT_CTLR_DUP_FILTER_LEN > 0 */
 
-static void le_advertising_report(struct pdu_data *pdu_data,
-                                  struct pdu_data *pdu_data_next,
-                                  u8_t *b,
-                                  u8_t *b_next,
+static void le_advertising_report(struct pdu_data **pdu_data,
+                                  u8_t **b,
                                   struct net_buf *buf)
 {
 	const u8_t c_adv_type[] = { 0x00, 0x01, 0x03, 0xff, 0x04, 0xff, 0x02 };
 
-	struct pdu_adv *adv = (void *)pdu_data;
-	struct pdu_adv *adv_next = (void *)pdu_data_next;
+	struct pdu_adv *adv[2] = {NULL};
+	adv[0] = (void *)pdu_data[0];
+	adv[1] = (void *)pdu_data[1];
 
-	u8_t data_len;
-	u8_t data_len_next;
+	u8_t data_len[2] = {0};
+	s8_t rssi[2] = {0};
 
-	s8_t rssi;
-	s8_t rssi_next;
-	
 #if defined(CONFIG_BT_CTLR_PRIVACY)
 	u8_t rl_idx;
 #endif /* CONFIG_BT_CTLR_PRIVACY */
@@ -2166,11 +2162,11 @@ static void le_advertising_report(struct pdu_data *pdu_data,
 #endif /* CONFIG_BT_CTLR_EXT_SCAN_FP */
 
 #if defined(CONFIG_BT_CTLR_PRIVACY)
-	rl_idx = b[offsetof(struct radio_pdu_node_rx, pdu_data) +
-		   offsetof(struct pdu_adv, payload) + adv->len + 1];
+	rl_idx = b[0][offsetof(struct radio_pdu_node_rx, pdu_data) + //todo:JWI
+		   offsetof(struct pdu_adv, payload) + adv[0]->len + 1]; //todo:JWI
 	/* Update current RPA */
-	if (adv->tx_addr) {
-		ll_rl_crpa_set(0x00, NULL, rl_idx, &adv->adv_ind.addr[0]);
+	if (adv[0]->tx_addr) { //todo:JWI
+		ll_rl_crpa_set(0x00, NULL, rl_idx, &adv[0]->adv_ind.addr[0]); //todo:JWI
 	}
 #endif
 
@@ -2179,8 +2175,8 @@ static void le_advertising_report(struct pdu_data *pdu_data,
 	}
 
 #if defined(CONFIG_BT_CTLR_EXT_SCAN_FP)
-	direct = b[offsetof(struct radio_pdu_node_rx, pdu_data) +
-		   offsetof(struct pdu_adv, payload) + adv->len + 2];
+	direct = b[0][offsetof(struct radio_pdu_node_rx, pdu_data) + //todo:JWI
+		   offsetof(struct pdu_adv, payload) + adv[0]->len + 2]; //todo:JWI
 
 	if ((!direct && !(le_event_mask & BT_EVT_MASK_LE_ADVERTISING_REPORT)) ||
 	    (direct && !(le_event_mask & BT_HCI_EVT_LE_DIRECT_ADV_REPORT))) {
@@ -2194,36 +2190,36 @@ static void le_advertising_report(struct pdu_data *pdu_data,
 
 
 #if CONFIG_BT_CTLR_DUP_FILTER_LEN > 0
-	if (dup_found(adv)) {
+	if (dup_found(adv[0])) { //todo:JWI
 		return;
 	}
 #endif /* CONFIG_BT_CTLR_DUP_FILTER_LEN > 0 */
 
-	if (adv->type != PDU_ADV_TYPE_DIRECT_IND) {
-		data_len = (adv->len - BDADDR_SIZE);
+	if (adv[0]->type != PDU_ADV_TYPE_DIRECT_IND) {
+		data_len[0] = (adv[0]->len - BDADDR_SIZE);
 	} else {
-		data_len = 0;
+		data_len[0] = 0;
 	}
 
-	if (adv_next->type != PDU_ADV_TYPE_DIRECT_IND) {
-		data_len_next = (adv_next->len - BDADDR_SIZE);
+	if (adv[1]->type != PDU_ADV_TYPE_DIRECT_IND) {
+		data_len[1] = (adv[1]->len - BDADDR_SIZE);
 	} else {
-		data_len_next = 0;
+		data_len[1] = 0;
 	}
 
 	/* The Link Layer currently returns RSSI as an absolute value */
-	rssi = -b[offsetof(struct radio_pdu_node_rx, pdu_data) +
-		  offsetof(struct pdu_adv, payload) + adv->len];
+	rssi[0] = -b[0][offsetof(struct radio_pdu_node_rx, pdu_data) +
+		             offsetof(struct pdu_adv, payload) + adv[0]->len];
 
-	rssi_next = -b_next[offsetof(struct radio_pdu_node_rx, pdu_data) +
-		  offsetof(struct pdu_adv, payload) + adv_next->len];
+	rssi[1] = -b[1][offsetof(struct radio_pdu_node_rx, pdu_data) +
+		             offsetof(struct pdu_adv, payload) + adv[1]->len];
 
 #if defined(CONFIG_BT_CTLR_EXT_SCAN_FP)
 	if (direct) {
 		struct bt_hci_evt_le_direct_adv_report *drp;
 		struct bt_hci_evt_le_direct_adv_info *dir_info;
 
-		LL_ASSERT(adv->type == PDU_ADV_TYPE_DIRECT_IND);
+		LL_ASSERT(adv[0]->type == PDU_ADV_TYPE_DIRECT_IND); //todo:JWI
 		drp = meta_evt(buf, BT_HCI_EVT_LE_DIRECT_ADV_REPORT,
 			       sizeof(*drp) + sizeof(*dir_info));
 
@@ -2243,24 +2239,24 @@ static void le_advertising_report(struct pdu_data *pdu_data,
 #else
 		if (1) {
 #endif /* CONFIG_BT_CTLR_PRIVACY */
-			dir_info->addr.type = adv->tx_addr;
+			dir_info->addr.type = adv[0]->tx_addr; //todo:JWI
 			memcpy(&dir_info->addr.a.val[0],
-			       &adv->direct_ind.adv_addr[0],
+			       &adv[0]->direct_ind.adv_addr[0], //todo:JWI
 			       sizeof(bt_addr_t));
 		}
 
 		dir_info->dir_addr.type = 0x1;
 		memcpy(&dir_info->dir_addr.a.val[0],
-		       &adv->direct_ind.tgt_addr[0], sizeof(bt_addr_t));
+		       &adv[0]->direct_ind.tgt_addr[0], sizeof(bt_addr_t)); //todo:JWI
 
-		dir_info->rssi = rssi;
+		dir_info->rssi = rssi[0]; //todo:JWI
 
 		return;
 	}
 #endif /* CONFIG_BT_CTLR_EXT_SCAN_FP */
 
-	u8_t info_len = 1 + 1 + 6 + 1 + data_len + 1 + 		//len: evt_type + addr_type + addr + length + data + rssi
-					 	 1 + 1 + 6 + 1 + data_len_next + 1; //len: evt_type + addr_type + addr + length + data + rssi
+	u8_t info_len = 1 + 1 + 6 + 1 + data_len[0] + 1 + 		//len: evt_type + addr_type + addr + length + data + rssi
+					 	 1 + 1 + 6 + 1 + data_len[1] + 1;      //len: evt_type + addr_type + addr + length + data + rssi
 
 	u8_t *hci_buf = meta_evt(buf, BT_HCI_EVT_LE_ADVERTISING_REPORT, 1 + info_len); // 1 - num_of_reports size
 
@@ -2268,12 +2264,12 @@ static void le_advertising_report(struct pdu_data *pdu_data,
 	hci_buf[0] = 2;
 
 	/* EVENT_TYPES */
-	hci_buf[1] = c_adv_type[adv->type];
-	hci_buf[2] = c_adv_type[adv_next->type];
+	hci_buf[1] = c_adv_type[adv[0]->type];
+	hci_buf[2] = c_adv_type[adv[1]->type];
 
 #if defined(CONFIG_BT_CTLR_PRIVACY)
-	rl_idx = b[offsetof(struct radio_pdu_node_rx, pdu_data) +
-		   offsetof(struct pdu_adv, payload) + adv->len + 1];
+	rl_idx = b[0][offsetof(struct radio_pdu_node_rx, pdu_data) + //todo:JWI
+		   offsetof(struct pdu_adv, payload) + adv[0]->len + 1]; //todo:JWI
 	if (rl_idx < ll_rl_size_get()) {
 		printk("CONFIG_BT_CTLR_PRIVACY\n"); //todo:JWI
 		/* Store identity address */
@@ -2287,25 +2283,25 @@ static void le_advertising_report(struct pdu_data *pdu_data,
 #endif /* CONFIG_BT_CTLR_PRIVACY */
 
 		/* ADDR_TYPES */
-		hci_buf[3] = adv->tx_addr;
-		hci_buf[4] = adv_next->tx_addr;
+		hci_buf[3] = adv[0]->tx_addr;
+		hci_buf[4] = adv[1]->tx_addr;
 
 		/* MAC ADDRESSES */
-		memcpy(&hci_buf[5],                     &adv->adv_ind.addr[0],      sizeof(bt_addr_t));
-		memcpy(&hci_buf[5 + sizeof(bt_addr_t)], &adv_next->adv_ind.addr[0], sizeof(bt_addr_t)); // 17
+		memcpy(&hci_buf[5],                     &adv[0]->adv_ind.addr[0], sizeof(bt_addr_t));
+		memcpy(&hci_buf[5 + sizeof(bt_addr_t)], &adv[1]->adv_ind.addr[0], sizeof(bt_addr_t)); // 17
 	}
 
 	/* LENGTH DATA */
-	hci_buf[17] = data_len;
-	hci_buf[18] = data_len_next;
+	hci_buf[17] = data_len[0];
+	hci_buf[18] = data_len[1];
 
 	/* DATA */
-	memcpy(&hci_buf[19],            &adv->adv_ind.data[0],      data_len);
-	memcpy(&hci_buf[19 + data_len], &adv_next->adv_ind.data[0], data_len_next);
+	memcpy(&hci_buf[19],            &adv[0]->adv_ind.data[0], data_len[0]);
+	memcpy(&hci_buf[19 + data_len[0]], &adv[1]->adv_ind.data[0], data_len[1]);
 
 	/* RSSI */
-	hci_buf[19 + data_len + data_len_next] = rssi;
-	hci_buf[19 + data_len + data_len_next + 1] = rssi_next;
+	hci_buf[19 + data_len[0] + data_len[1]] = rssi[0];
+	hci_buf[19 + data_len[0] + data_len[1] + 1] = rssi[1];
 }
 
 #if defined(CONFIG_BT_CTLR_ADV_EXT)
@@ -2647,80 +2643,79 @@ static void le_phy_upd_complete(struct pdu_data *pdu_data, u16_t handle,
 #endif /* CONFIG_BT_CTLR_PHY */
 #endif /* CONFIG_BT_CONN */
 
-static void encode_control(struct radio_pdu_node_rx *node_rx,
-                           struct radio_pdu_node_rx *node_rx_next,
-                           struct pdu_data *pdu_data,
-                           struct pdu_data *pdu_data_next,
+static void encode_control(struct radio_pdu_node_rx **node_rx,
+                           struct pdu_data **pdu_data,
                            struct net_buf *buf)
 {
-	u8_t *b = (u8_t *)node_rx;
-	u8_t *b_next = (u8_t *)node_rx_next;
+	u8_t *b[2] = {NULL};
+	b[0] = (u8_t *)node_rx[0];
+	b[1] = (u8_t *)node_rx[1];
+
 	u16_t handle;
+	handle = node_rx[0]->hdr.handle; //todo:JWI
 
-	handle = node_rx->hdr.handle; //todo:JWI
-
-	switch (node_rx->hdr.type) {
+	switch (node_rx[0]->hdr.type) { //todo:JWI
 	case NODE_RX_TYPE_REPORT:
-		le_advertising_report(pdu_data, pdu_data_next, b, b_next, buf);
+		le_advertising_report(pdu_data, b, buf);
 		break;
 
 #if defined(CONFIG_BT_CTLR_ADV_EXT)
 	case NODE_RX_TYPE_EXT_1M_REPORT:
-		le_adv_ext_1M_report(pdu_data, b, buf);
+		le_adv_ext_1M_report(pdu_data[0], b[0], buf); //todo:JWI
 		break;
 
 	case NODE_RX_TYPE_EXT_CODED_REPORT:
-		le_adv_ext_coded_report(pdu_data, b, buf);
+		le_adv_ext_coded_report(pdu_data[0], b[0], buf); //todo:JWI
 		break;
 #endif /* CONFIG_BT_CTLR_ADV_EXT */
 
 #if defined(CONFIG_BT_CTLR_SCAN_REQ_NOTIFY)
 	case NODE_RX_TYPE_SCAN_REQ:
-		le_scan_req_received(pdu_data, b, buf);
+		le_scan_req_received(pdu_data[0], b[0], buf); //todo:JWI
 		break;
 #endif /* CONFIG_BT_CTLR_SCAN_REQ_NOTIFY */
 
 #if defined(CONFIG_BT_CONN)
 	case NODE_RX_TYPE_CONNECTION:
-		le_conn_complete(pdu_data, handle, buf);
+		le_conn_complete(pdu_data[0], handle, buf); //todo:JWI
 		break;
 
 	case NODE_RX_TYPE_TERMINATE:
-		disconn_complete(pdu_data, handle, buf);
+		disconn_complete(pdu_data[0], handle, buf); //todo:JWI
 		break;
 
 	case NODE_RX_TYPE_CONN_UPDATE:
-		le_conn_update_complete(pdu_data, handle, buf);
+		le_conn_update_complete(pdu_data[0], handle, buf); //todo:JWI
 		break;
 
 #if defined(CONFIG_BT_CTLR_LE_ENC)
 	case NODE_RX_TYPE_ENC_REFRESH:
-		enc_refresh_complete(pdu_data, handle, buf);
+		enc_refresh_complete(pdu_data[0], handle, buf); //todo:JWI
 		break;
 #endif /* CONFIG_BT_CTLR_LE_ENC */
 
 #if defined(CONFIG_BT_CTLR_LE_PING)
 	case NODE_RX_TYPE_APTO:
-		auth_payload_timeout_exp(pdu_data, handle, buf);
+		auth_payload_timeout_exp(pdu_data[0], handle, buf); //todo:JWI
 		break;
 #endif /* CONFIG_BT_CTLR_LE_PING */
 
 #if defined(CONFIG_BT_CTLR_CHAN_SEL_2)
 	case NODE_RX_TYPE_CHAN_SEL_ALGO:
-		le_chan_sel_algo(pdu_data, handle, buf);
+		le_chan_sel_algo(pdu_data[0], handle, buf); //todo:JWI
 		break;
 #endif /* CONFIG_BT_CTLR_CHAN_SEL_2 */
 
 #if defined(CONFIG_BT_CTLR_PHY)
 	case NODE_RX_TYPE_PHY_UPDATE:
-		le_phy_upd_complete(pdu_data, handle, buf);
+		le_phy_upd_complete(pdu_data[0], handle, buf); //todo:JWI
 		return;
 #endif /* CONFIG_BT_CTLR_PHY */
 
 #if defined(CONFIG_BT_CTLR_CONN_RSSI)
 	case NODE_RX_TYPE_RSSI:
 		BT_INFO("handle: 0x%04x, rssi: -%d dB.", handle,
-			pdu_data->rssi);
+			pdu_data[0]->rssi); //todo:JWI
 		return;
 #endif /* CONFIG_BT_CTLR_CONN_RSSI */
 #endif /* CONFIG_BT_CONN */
@@ -2734,12 +2729,12 @@ static void encode_control(struct radio_pdu_node_rx *node_rx,
 #if defined(CONFIG_BT_CTLR_PROFILE_ISR)
 	case NODE_RX_TYPE_PROFILE:
 		BT_INFO("l: %d, %d, %d; t: %d, %d, %d.",
-			pdu_data->profile.lcur,
-			pdu_data->profile.lmin,
-			pdu_data->profile.lmax,
-			pdu_data->profile.cur,
-			pdu_data->profile.min,
-			pdu_data->profile.max);
+			pdu_data[0]->profile.lcur, //todo:JWI
+			pdu_data[0]->profile.lmin, //todo:JWI
+			pdu_data[0]->profile.lmax, //todo:JWI
+			pdu_data[0]->profile.cur, //todo:JWI
+			pdu_data[0]->profile.min, //todo:JWI
+			pdu_data[0]->profile.max); //todo:JWI
 		return;
 #endif /* CONFIG_BT_CTLR_PROFILE_ISR */
 
@@ -2993,18 +2988,17 @@ void hci_acl_encode(struct radio_pdu_node_rx *node_rx, struct net_buf *buf)
 }
 #endif
 
-void hci_evt_encode(struct radio_pdu_node_rx *node_rx, struct radio_pdu_node_rx *node_rx_next, struct net_buf *buf)
+void hci_evt_encode(struct radio_pdu_node_rx **node_rx, struct net_buf *buf)
 {
-	struct pdu_data *pdu_data;
-	struct pdu_data *pdu_data_next;
+	struct pdu_data *pdu_data[2] = {NULL};
 
-	pdu_data = (void *)node_rx->pdu_data;
-	pdu_data_next = (void *)node_rx_next->pdu_data;
+	pdu_data[0] = (void *)node_rx[0]->pdu_data;
+	pdu_data[1] = (void *)node_rx[1]->pdu_data;
 
-	if (node_rx->hdr.type != NODE_RX_TYPE_DC_PDU) { //todo:JWI
-		encode_control(node_rx, node_rx_next, pdu_data, pdu_data_next, buf);
+	if (node_rx[0]->hdr.type != NODE_RX_TYPE_DC_PDU) { //todo:JWI
+		encode_control(node_rx, pdu_data, buf);
 	} else {
-		encode_data_ctrl(node_rx, pdu_data, buf); //todo: JWI
+		encode_data_ctrl(node_rx[0], pdu_data[0], buf); //todo: JWI
 	}
 }
 
