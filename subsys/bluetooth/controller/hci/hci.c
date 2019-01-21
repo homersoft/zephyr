@@ -70,13 +70,16 @@ static u32_t conn_count;
 
 #define DEFAULT_EVENT_MASK           0x1fffffffffff
 #define DEFAULT_EVENT_MASK_PAGE_2    0x0
-#define DEFAULT_LE_EVENT_MASK 0x1f
+#define DEFAULT_LE_EVENT_MASK        0x1f
 
-#define LEN_NR_OF_REPORTS  ((u8_t)1)
-#define LEN_EVT_TYPE       ((u8_t)1)
-#define LEN_ADDR_TYPE      ((u8_t)1)
-#define LEN_DATA           ((u8_t)1)
-#define LEN_RSSI           ((u8_t)1)
+#define LEN_NR_OF_REPORTS        ((u8_t)1)
+#define LEN_EVT_TYPE             ((u8_t)1)
+#define LEN_ADDR_TYPE            ((u8_t)1)
+#define LEN_DATA                 ((u8_t)1)
+#define LEN_RSSI                 ((u8_t)1)
+
+#define OFFSET_NUM_OF_REPORTS    ((u8_t)0)
+#define OFFSET_EVT_TYPES         ((u8_t)1)
 
 static u64_t event_mask = DEFAULT_EVENT_MASK;
 static u64_t event_mask_page_2 = DEFAULT_EVENT_MASK_PAGE_2;
@@ -2161,7 +2164,13 @@ static void le_advertising_report(struct pdu_data **pdu_data,
    u8_t data_len[HCI_MAX_NR_OF_CONCAT_MSG] = {0};
    s8_t rssi[HCI_MAX_NR_OF_CONCAT_MSG] = {0};
 
-	for(node_cnt = 0; node_cnt < nr_of_frames_to_concat; node_cnt++)
+   u8_t Offset_addr_type = 0;
+   u8_t Offset_mac_addr = 0;
+   u8_t Offset_data_len = 0;
+   u8_t Offset_data = 0;
+   u8_t Offset_rssi = 0;
+
+   for(node_cnt = 0; node_cnt < nr_of_frames_to_concat; node_cnt++)
    {
       adv[node_cnt] = (void *)pdu_data[node_cnt];
 
@@ -2266,11 +2275,13 @@ static void le_advertising_report(struct pdu_data **pdu_data,
 	u8_t *hci_buf = meta_evt(buf, BT_HCI_EVT_LE_ADVERTISING_REPORT, LEN_NR_OF_REPORTS + info_len);
 
 	/* NUM OF REPORTS */ //todo:JWI Build frames dynamically
-	hci_buf[0] = 2;
+	hci_buf[OFFSET_NUM_OF_REPORTS] = node_cnt;
 
-	/* EVENT_TYPES */
-	hci_buf[1] = c_adv_type[adv[0]->type];
-	hci_buf[2] = c_adv_type[adv[1]->type];
+   for(node_cnt = 0; node_cnt < nr_of_frames_to_concat; node_cnt++)
+   {
+      /* EVENT_TYPES */
+      hci_buf[node_cnt + OFFSET_EVT_TYPES] = c_adv_type[adv[node_cnt]->type];
+   }
 
 #if defined(CONFIG_BT_CTLR_PRIVACY)
 	rl_idx = b[0][offsetof(struct radio_pdu_node_rx, pdu_data) + //todo:JWI
@@ -2287,26 +2298,44 @@ static void le_advertising_report(struct pdu_data **pdu_data,
 	if (1) {
 #endif /* CONFIG_BT_CTLR_PRIVACY */
 
-		/* ADDR_TYPES */
-		hci_buf[3] = adv[0]->tx_addr;
-		hci_buf[4] = adv[1]->tx_addr;
+	   Offset_addr_type = OFFSET_EVT_TYPES + node_cnt;
+      for(node_cnt = 0; node_cnt < nr_of_frames_to_concat; node_cnt++)
+      {
+         /* ADDR_TYPES */
+         hci_buf[node_cnt + Offset_addr_type] = adv[node_cnt]->tx_addr;
+      }
 
-		/* MAC ADDRESSES */
-		memcpy(&hci_buf[5],                     &adv[0]->adv_ind.addr[0], sizeof(bt_addr_t));
-		memcpy(&hci_buf[5 + sizeof(bt_addr_t)], &adv[1]->adv_ind.addr[0], sizeof(bt_addr_t)); // 17
+      Offset_mac_addr = Offset_addr_type + node_cnt;
+      for(u8_t offset = 0, node_cnt = 0; node_cnt < nr_of_frames_to_concat; node_cnt++, offset += BDADDR_SIZE)
+      {
+         /* MAC ADDRESSES */
+         memcpy(&hci_buf[Offset_mac_addr + offset], &adv[node_cnt]->adv_ind.addr[0], BDADDR_SIZE);
+      }
 	}
 
-	/* LENGTH DATA */
-	hci_buf[17] = data_len[0];
-	hci_buf[18] = data_len[1];
+	Offset_data_len = Offset_mac_addr + (node_cnt * BDADDR_SIZE);
+   for(node_cnt = 0; node_cnt < nr_of_frames_to_concat; node_cnt++)
+   {
+      /* LENGTH DATA */
+      hci_buf[Offset_data_len + node_cnt] = data_len[node_cnt];
+   }
 
-	/* DATA */
-	memcpy(&hci_buf[19],            &adv[0]->adv_ind.data[0], data_len[0]);
-	memcpy(&hci_buf[19 + data_len[0]], &adv[1]->adv_ind.data[0], data_len[1]);
+   u8_t dlen = 0;
+   Offset_data = Offset_data_len + node_cnt;
+   for(dlen = 0, node_cnt = 0; node_cnt < nr_of_frames_to_concat; node_cnt++)
+   {
+      /* DATA */
+      memcpy(&hci_buf[Offset_data + dlen], &adv[node_cnt]->adv_ind.data[0], data_len[node_cnt]);
+      dlen += data_len[node_cnt];
+   }
+   dlen += data_len[node_cnt];
+   Offset_rssi = Offset_data + dlen;
 
-	/* RSSI */
-	hci_buf[19 + data_len[0] + data_len[1]] = rssi[0];
-	hci_buf[19 + data_len[0] + data_len[1] + 1] = rssi[1];
+   for(node_cnt = 0; node_cnt < nr_of_frames_to_concat; node_cnt++)
+   {
+      /* RSSI */
+      hci_buf[Offset_rssi + node_cnt] = rssi[node_cnt];
+   }
 }
 
 #if defined(CONFIG_BT_CTLR_ADV_EXT)
