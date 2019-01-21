@@ -72,6 +72,12 @@ static u32_t conn_count;
 #define DEFAULT_EVENT_MASK_PAGE_2    0x0
 #define DEFAULT_LE_EVENT_MASK 0x1f
 
+#define LEN_NR_OF_REPORTS  ((u8_t)1)
+#define LEN_EVT_TYPE       ((u8_t)1)
+#define LEN_ADDR_TYPE      ((u8_t)1)
+#define LEN_DATA           ((u8_t)1)
+#define LEN_RSSI           ((u8_t)1)
+
 static u64_t event_mask = DEFAULT_EVENT_MASK;
 static u64_t event_mask_page_2 = DEFAULT_EVENT_MASK_PAGE_2;
 static u64_t le_event_mask = DEFAULT_LE_EVENT_MASK;
@@ -2143,16 +2149,37 @@ static inline bool dup_found(struct pdu_adv *adv)
 
 static void le_advertising_report(struct pdu_data **pdu_data,
                                   u8_t **b,
-                                  struct net_buf *buf)
+                                  struct net_buf *buf,
+                                  u8_t nr_of_frames_to_concat)
 {
-	const u8_t c_adv_type[] = { 0x00, 0x01, 0x03, 0xff, 0x04, 0xff, 0x02 };
+   u8_t node_cnt = 0;
+   u8_t info_len = 0;
 
-	struct pdu_adv *adv[2] = {NULL};
-	adv[0] = (void *)pdu_data[0];
-	adv[1] = (void *)pdu_data[1];
+   const u8_t c_adv_type[] = { 0x00, 0x01, 0x03, 0xff, 0x04, 0xff, 0x02 };
 
-	u8_t data_len[2] = {0};
-	s8_t rssi[2] = {0};
+   struct pdu_adv *adv[HCI_MAX_NR_OF_CONCAT_MSG] = {NULL};
+   u8_t data_len[HCI_MAX_NR_OF_CONCAT_MSG] = {0};
+   s8_t rssi[HCI_MAX_NR_OF_CONCAT_MSG] = {0};
+
+	for(node_cnt = 0; node_cnt < nr_of_frames_to_concat; node_cnt++)
+   {
+      adv[node_cnt] = (void *)pdu_data[node_cnt];
+
+      if (adv[node_cnt]->type != PDU_ADV_TYPE_DIRECT_IND)
+      {
+         data_len[node_cnt] = (adv[node_cnt]->len - BDADDR_SIZE);
+      }
+      else
+      {
+         data_len[node_cnt] = 0;
+      }
+
+      /* The Link Layer currently returns RSSI as an absolute value */
+      rssi[node_cnt] = -b[node_cnt][offsetof(struct radio_pdu_node_rx, pdu_data) +
+                                    offsetof(struct pdu_adv, payload) + adv[node_cnt]->len];
+
+      info_len += LEN_EVT_TYPE + LEN_ADDR_TYPE + BDADDR_SIZE + LEN_DATA + data_len[node_cnt] + LEN_RSSI;
+   }
 
 #if defined(CONFIG_BT_CTLR_PRIVACY)
 	u8_t rl_idx;
@@ -2195,25 +2222,6 @@ static void le_advertising_report(struct pdu_data **pdu_data,
 	}
 #endif /* CONFIG_BT_CTLR_DUP_FILTER_LEN > 0 */
 
-	if (adv[0]->type != PDU_ADV_TYPE_DIRECT_IND) {
-		data_len[0] = (adv[0]->len - BDADDR_SIZE);
-	} else {
-		data_len[0] = 0;
-	}
-
-	if (adv[1]->type != PDU_ADV_TYPE_DIRECT_IND) {
-		data_len[1] = (adv[1]->len - BDADDR_SIZE);
-	} else {
-		data_len[1] = 0;
-	}
-
-	/* The Link Layer currently returns RSSI as an absolute value */
-	rssi[0] = -b[0][offsetof(struct radio_pdu_node_rx, pdu_data) +
-		             offsetof(struct pdu_adv, payload) + adv[0]->len];
-
-	rssi[1] = -b[1][offsetof(struct radio_pdu_node_rx, pdu_data) +
-		             offsetof(struct pdu_adv, payload) + adv[1]->len];
-
 #if defined(CONFIG_BT_CTLR_EXT_SCAN_FP)
 	if (direct) {
 		struct bt_hci_evt_le_direct_adv_report *drp;
@@ -2255,12 +2263,9 @@ static void le_advertising_report(struct pdu_data **pdu_data,
 	}
 #endif /* CONFIG_BT_CTLR_EXT_SCAN_FP */
 
-	u8_t info_len = 1 + 1 + 6 + 1 + data_len[0] + 1 + 		//len: evt_type + addr_type + addr + length + data + rssi
-					 	 1 + 1 + 6 + 1 + data_len[1] + 1;      //len: evt_type + addr_type + addr + length + data + rssi
+	u8_t *hci_buf = meta_evt(buf, BT_HCI_EVT_LE_ADVERTISING_REPORT, LEN_NR_OF_REPORTS + info_len);
 
-	u8_t *hci_buf = meta_evt(buf, BT_HCI_EVT_LE_ADVERTISING_REPORT, 1 + info_len); // 1 - num_of_reports size
-
-	/* NUM OF REPORTS */
+	/* NUM OF REPORTS */ //todo:JWI Build frames dynamically
 	hci_buf[0] = 2;
 
 	/* EVENT_TYPES */
@@ -2647,16 +2652,20 @@ static void encode_control(struct radio_pdu_node_rx **node_rx,
                            struct pdu_data **pdu_data,
                            struct net_buf *buf)
 {
-	u8_t *b[2] = {NULL};
-	b[0] = (u8_t *)node_rx[0];
-	b[1] = (u8_t *)node_rx[1];
+	u8_t node_cnt = 0;
+	u8_t *b[HCI_MAX_NR_OF_CONCAT_MSG] = {NULL};
 
-	u16_t handle;
-	handle = node_rx[0]->hdr.handle; //todo:JWI
+   while(node_rx[node_cnt] && (node_cnt < HCI_MAX_NR_OF_CONCAT_MSG))
+   {
+      b[node_cnt] = (u8_t *)node_rx[node_cnt];
+      node_cnt++;
+   }
+
+   u16_t handle = node_rx[0]->hdr.handle; //todo:JWI
 
 	switch (node_rx[0]->hdr.type) { //todo:JWI
 	case NODE_RX_TYPE_REPORT:
-		le_advertising_report(pdu_data, b, buf);
+		le_advertising_report(pdu_data, b, buf, node_cnt);
 		break;
 
 #if defined(CONFIG_BT_CTLR_ADV_EXT)
@@ -2990,10 +2999,14 @@ void hci_acl_encode(struct radio_pdu_node_rx *node_rx, struct net_buf *buf)
 
 void hci_evt_encode(struct radio_pdu_node_rx **node_rx, struct net_buf *buf)
 {
-	struct pdu_data *pdu_data[2] = {NULL};
+   u8_t node_cnt = 0;
+  	struct pdu_data *pdu_data[HCI_MAX_NR_OF_CONCAT_MSG] = {NULL};
 
-	pdu_data[0] = (void *)node_rx[0]->pdu_data;
-	pdu_data[1] = (void *)node_rx[1]->pdu_data;
+   while(node_rx[node_cnt] && (node_cnt < HCI_MAX_NR_OF_CONCAT_MSG))
+   {
+      pdu_data[node_cnt] = (void *)node_rx[node_cnt]->pdu_data;
+      node_cnt++;
+   }
 
 	if (node_rx[0]->hdr.type != NODE_RX_TYPE_DC_PDU) { //todo:JWI
 		encode_control(node_rx, pdu_data, buf);

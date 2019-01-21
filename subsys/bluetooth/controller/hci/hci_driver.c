@@ -151,11 +151,15 @@ static inline struct net_buf *encode_node(struct radio_pdu_node_rx **node_rx, s8
 
 static inline struct net_buf *process_node(struct radio_pdu_node_rx **node_rx)
 {
-	s8_t class[2] = {0};
-	class[0] = hci_get_class(node_rx[0]);
-   class[1] = hci_get_class(node_rx[1]);
+   u8_t node_cnt = 0;
+   struct net_buf *buf = NULL;
+   s8_t class[HCI_MAX_NR_OF_CONCAT_MSG] = {0};
 
-	struct net_buf *buf = NULL;
+   while(node_rx[node_cnt] && (node_cnt < HCI_MAX_NR_OF_CONCAT_MSG))
+   {
+      class[node_cnt] = hci_get_class(node_rx[node_cnt]);
+      node_cnt++;
+   }
 
 #if defined(CONFIG_BT_HCI_ACL_FLOW_CONTROL)
 	if (hbuf_count != -1) {
@@ -296,7 +300,7 @@ static void recv_thread(void *p1, void *p2, void *p3)
 #endif
 
 	while (1) {
-		struct radio_pdu_node_rx *node_rx[2] = {NULL};
+		struct radio_pdu_node_rx *node_rx[HCI_MAX_NR_OF_CONCAT_MSG] = {NULL};
 		struct net_buf *buf = NULL;
 
 		BT_DBG("blocking");

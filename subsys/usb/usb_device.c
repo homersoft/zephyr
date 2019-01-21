@@ -1357,12 +1357,12 @@ int usb_transfer_sync(u8_t ep, u8_t *data, size_t dlen, unsigned int flags)
 
 	k_sem_init(&pdata.sem, 0, 1);
 
-//	printk("USB data\r\n");
-//	for(const uint8_t *i = &data[0]; i != &data[0] + dlen; i++)
-//	{
-//		printk("%x " , *i);
-//	}
-//	printk("#\r\n");
+	printk("USB data\r\n");
+	for(const uint8_t *i = &data[0]; i != &data[0] + dlen; i++)
+	{
+		printk("%x " , *i);
+	}
+	printk("#\r\n");
 
 	ret = usb_transfer(ep, data, dlen, flags, usb_transfer_sync_cb, &pdata);
 	if (ret) {
