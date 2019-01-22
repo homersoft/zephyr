@@ -2164,22 +2164,13 @@ static void le_advertising_report(struct pdu_data **pdu_data,
    u8_t data_len[HCI_MAX_NR_OF_CONCAT_MSG] = {0};
    s8_t rssi[HCI_MAX_NR_OF_CONCAT_MSG] = {0};
 
-   u8_t Offset_addr_type = 0;
-   u8_t Offset_mac_addr = 0;
-   u8_t Offset_data_len = 0;
-   u8_t Offset_data = 0;
-   u8_t Offset_rssi = 0;
+   for(node_cnt = 0; node_cnt < nr_of_frames_to_concat; node_cnt++) {
 
-   for(node_cnt = 0; node_cnt < nr_of_frames_to_concat; node_cnt++)
-   {
       adv[node_cnt] = (void *)pdu_data[node_cnt];
 
-      if (adv[node_cnt]->type != PDU_ADV_TYPE_DIRECT_IND)
-      {
+      if (adv[node_cnt]->type != PDU_ADV_TYPE_DIRECT_IND) {
          data_len[node_cnt] = (adv[node_cnt]->len - BDADDR_SIZE);
-      }
-      else
-      {
+      } else {
          data_len[node_cnt] = 0;
       }
 
@@ -2274,13 +2265,34 @@ static void le_advertising_report(struct pdu_data **pdu_data,
 
 	u8_t *hci_buf = meta_evt(buf, BT_HCI_EVT_LE_ADVERTISING_REPORT, LEN_NR_OF_REPORTS + info_len);
 
-	/* NUM OF REPORTS */ //todo:JWI Build frames dynamically
+	/* NUM OF REPORTS */
 	hci_buf[OFFSET_NUM_OF_REPORTS] = node_cnt;
 
-   for(node_cnt = 0; node_cnt < nr_of_frames_to_concat; node_cnt++)
-   {
+	u8_t dlen = 0;
+   u16_t offset = 0;
+
+   for(u8_t mac_offs = 0, node_cnt = 0; node_cnt < nr_of_frames_to_concat; node_cnt++,  mac_offs += (BDADDR_SIZE - 1)) {
+
       /* EVENT_TYPES */
-      hci_buf[node_cnt + OFFSET_EVT_TYPES] = c_adv_type[adv[node_cnt]->type];
+      offset = node_cnt + 1;
+      hci_buf[offset] = c_adv_type[adv[node_cnt]->type];
+
+      /* ADDR_TYPES */
+      offset += nr_of_frames_to_concat;
+      hci_buf[offset] = adv[node_cnt]->tx_addr;
+
+      /* MAC ADDRESSES */
+      offset += nr_of_frames_to_concat + mac_offs;
+      memcpy(&hci_buf[offset], &adv[node_cnt]->adv_ind.addr[0], BDADDR_SIZE);
+
+      /* LENGTH DATA */
+      offset += (BDADDR_SIZE * nr_of_frames_to_concat) - mac_offs;
+      hci_buf[offset] = data_len[node_cnt];
+
+      /* DATA */
+      offset += nr_of_frames_to_concat + dlen;
+      memcpy(&hci_buf[offset], &adv[node_cnt]->adv_ind.data[0], data_len[node_cnt]);
+      dlen += data_len[node_cnt] - 1;
    }
 
 #if defined(CONFIG_BT_CTLR_PRIVACY)
@@ -2295,46 +2307,15 @@ static void le_advertising_report(struct pdu_data **pdu_data,
 		//adv_info->addr.type += 2;
 	} else { //todo:JWI
 #else
-	if (1) {
+   if(1)
+   {
 #endif /* CONFIG_BT_CTLR_PRIVACY */
 
-	   Offset_addr_type = OFFSET_EVT_TYPES + node_cnt;
-      for(node_cnt = 0; node_cnt < nr_of_frames_to_concat; node_cnt++)
-      {
-         /* ADDR_TYPES */
-         hci_buf[node_cnt + Offset_addr_type] = adv[node_cnt]->tx_addr;
+      for(u8_t rssi_offs = dlen + offset + 1, node_cnt = 1; node_cnt <= nr_of_frames_to_concat; node_cnt++, rssi_offs++) {
+
+         /* RSSI */
+         hci_buf[rssi_offs] = rssi[node_cnt];
       }
-
-      Offset_mac_addr = Offset_addr_type + node_cnt;
-      for(u8_t offset = 0, node_cnt = 0; node_cnt < nr_of_frames_to_concat; node_cnt++, offset += BDADDR_SIZE)
-      {
-         /* MAC ADDRESSES */
-         memcpy(&hci_buf[Offset_mac_addr + offset], &adv[node_cnt]->adv_ind.addr[0], BDADDR_SIZE);
-      }
-	}
-
-	Offset_data_len = Offset_mac_addr + (node_cnt * BDADDR_SIZE);
-   for(node_cnt = 0; node_cnt < nr_of_frames_to_concat; node_cnt++)
-   {
-      /* LENGTH DATA */
-      hci_buf[Offset_data_len + node_cnt] = data_len[node_cnt];
-   }
-
-   u8_t dlen = 0;
-   Offset_data = Offset_data_len + node_cnt;
-   for(dlen = 0, node_cnt = 0; node_cnt < nr_of_frames_to_concat; node_cnt++)
-   {
-      /* DATA */
-      memcpy(&hci_buf[Offset_data + dlen], &adv[node_cnt]->adv_ind.data[0], data_len[node_cnt]);
-      dlen += data_len[node_cnt];
-   }
-   dlen += data_len[node_cnt];
-   Offset_rssi = Offset_data + dlen;
-
-   for(node_cnt = 0; node_cnt < nr_of_frames_to_concat; node_cnt++)
-   {
-      /* RSSI */
-      hci_buf[Offset_rssi + node_cnt] = rssi[node_cnt];
    }
 }
 
