@@ -2311,7 +2311,7 @@ static void le_advertising_report(struct pdu_data **pdu_data,
    {
 #endif /* CONFIG_BT_CTLR_PRIVACY */
 
-      for(u8_t rssi_offs = dlen + offset + 1, node_cnt = 1; node_cnt <= nr_of_frames_to_concat; node_cnt++, rssi_offs++) {
+      for(u8_t rssi_offs = dlen + offset + 1, node_cnt = 0; node_cnt < nr_of_frames_to_concat; node_cnt++, rssi_offs++) {
 
          /* RSSI */
          hci_buf[rssi_offs] = rssi[node_cnt];
