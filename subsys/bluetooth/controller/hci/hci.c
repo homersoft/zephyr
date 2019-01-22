@@ -2150,19 +2150,27 @@ static inline bool dup_found(struct pdu_adv *adv)
 }
 #endif /* CONFIG_BT_CTLR_DUP_FILTER_LEN > 0 */
 
-static void le_advertising_report(struct pdu_data **pdu_data,
-                                  u8_t **b,
-                                  struct net_buf *buf,
-                                  u8_t nr_of_frames_to_concat)
+static void le_advertising_report(struct radio_pdu_node_rx **node_rx,
+                                  struct net_buf *buf)
 {
    u8_t node_cnt = 0;
    u8_t info_len = 0;
+   u8_t nr_of_frames_to_concat = 0;
 
    const u8_t c_adv_type[] = { 0x00, 0x01, 0x03, 0xff, 0x04, 0xff, 0x02 };
 
    struct pdu_adv *adv[HCI_MAX_NR_OF_CONCAT_MSG] = {NULL};
+   struct pdu_data *pdu_data[HCI_MAX_NR_OF_CONCAT_MSG] = {NULL};
    u8_t data_len[HCI_MAX_NR_OF_CONCAT_MSG] = {0};
    s8_t rssi[HCI_MAX_NR_OF_CONCAT_MSG] = {0};
+   u8_t *b[HCI_MAX_NR_OF_CONCAT_MSG] = {NULL};
+
+   /* Check how many frames will be concatenated and set the pointers */
+   while(node_rx[nr_of_frames_to_concat] && (nr_of_frames_to_concat < HCI_MAX_NR_OF_CONCAT_MSG)) {
+      pdu_data[nr_of_frames_to_concat] = (void *)node_rx[nr_of_frames_to_concat]->pdu_data;
+      b[nr_of_frames_to_concat] = (u8_t *)node_rx[nr_of_frames_to_concat];
+      nr_of_frames_to_concat++;
+   }
 
    for(node_cnt = 0; node_cnt < nr_of_frames_to_concat; node_cnt++) {
 
@@ -2679,7 +2687,7 @@ static void encode_control(struct radio_pdu_node_rx **node_rx,
 
 	switch (node_rx[0]->hdr.type) { //todo:JWI
 	case NODE_RX_TYPE_REPORT:
-		le_advertising_report(pdu_data, b, buf, node_cnt);
+		le_advertising_report(node_rx, buf);
 		break;
 
 #if defined(CONFIG_BT_CTLR_ADV_EXT)
