@@ -2270,6 +2270,7 @@ static void le_advertising_report(struct pdu_data **pdu_data,
 
 	u8_t dlen = 0;
    u16_t offset = 0;
+   u16_t rssi_offset = 0;
 
    for(u8_t mac_offs = 0, node_cnt = 0; node_cnt < nr_of_frames_to_concat; node_cnt++,  mac_offs += (BDADDR_SIZE - 1)) {
 
@@ -2293,6 +2294,9 @@ static void le_advertising_report(struct pdu_data **pdu_data,
       offset += nr_of_frames_to_concat + dlen;
       memcpy(&hci_buf[offset], &adv[node_cnt]->adv_ind.data[0], data_len[node_cnt]);
       dlen += data_len[node_cnt] - 1;
+
+      /* Update the idx for RSSI storage */
+      rssi_offset = data_len[node_cnt];
    }
 
 #if defined(CONFIG_BT_CTLR_PRIVACY)
@@ -2311,10 +2315,10 @@ static void le_advertising_report(struct pdu_data **pdu_data,
    {
 #endif /* CONFIG_BT_CTLR_PRIVACY */
 
-      for(u8_t rssi_offs = dlen + offset + 1, node_cnt = 0; node_cnt < nr_of_frames_to_concat; node_cnt++, rssi_offs++) {
+      for(u8_t idx = rssi_offset + offset, node_cnt = 0; node_cnt < nr_of_frames_to_concat; node_cnt++, idx++) {
 
          /* RSSI */
-         hci_buf[rssi_offs] = rssi[node_cnt];
+         hci_buf[idx] = rssi[node_cnt];
       }
    }
 }
