@@ -2190,14 +2190,7 @@ static void le_advertising_report(struct radio_pdu_node_rx **node_rx,
    }
 
 #if defined(CONFIG_BT_CTLR_PRIVACY)
-	u8_t rl_idx;
-#endif /* CONFIG_BT_CTLR_PRIVACY */
-#if defined(CONFIG_BT_CTLR_EXT_SCAN_FP)
-	u8_t direct;
-#endif /* CONFIG_BT_CTLR_EXT_SCAN_FP */
-
-#if defined(CONFIG_BT_CTLR_PRIVACY)
-	rl_idx = b[0][offsetof(struct radio_pdu_node_rx, pdu_data) + //todo:JWI
+	u8_t rl_idx = b[0][offsetof(struct radio_pdu_node_rx, pdu_data) + //todo:JWI
 		   offsetof(struct pdu_adv, payload) + adv[0]->len + 1]; //todo:JWI
 	/* Update current RPA */
 	if (adv[0]->tx_addr) { //todo:JWI
@@ -2210,7 +2203,7 @@ static void le_advertising_report(struct radio_pdu_node_rx **node_rx,
 	}
 
 #if defined(CONFIG_BT_CTLR_EXT_SCAN_FP)
-	direct = b[0][offsetof(struct radio_pdu_node_rx, pdu_data) + //todo:JWI
+	u8_t direct = b[0][offsetof(struct radio_pdu_node_rx, pdu_data) + //todo:JWI
 		   offsetof(struct pdu_adv, payload) + adv[0]->len + 2]; //todo:JWI
 
 	if ((!direct && !(le_event_mask & BT_EVT_MASK_LE_ADVERTISING_REPORT)) ||
@@ -2323,11 +2316,8 @@ static void le_advertising_report(struct radio_pdu_node_rx **node_rx,
    {
 #endif /* CONFIG_BT_CTLR_PRIVACY */
 
-      for(u8_t idx = rssi_offset + offset, node_cnt = 0; node_cnt < nr_of_frames_to_concat; node_cnt++, idx++) {
-
-         /* RSSI */
-         hci_buf[idx] = rssi[node_cnt];
-      }
+      /* RSSI */
+      memcpy(&hci_buf[rssi_offset + offset], &rssi[0], nr_of_frames_to_concat);
    }
 }
 
